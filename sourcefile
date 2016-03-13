@@ -1,0 +1,92 @@
+function ocr()
+{
+     // Ensure Advanced Drive Service is enabled
+  try {
+    Drive.Files.list();
+  }
+  catch (e) {
+    throw new Error( "please enable 'Drive API'" );
+  }
+  
+var pa = "Page:மேனகா-2.pdf/336";//sample source page
+var htmlcode = UrlFetchApp.fetch("ta.wikisource.org/wiki/"+pa).getContentText();
+var link = "";
+htmlcode.replace(/href=\"\/\/upload\.wikimedia\.org\/[a-zA-Z0-9\-%\_\/\.]+\.jpg/gi, function (match, capture) { link=match;});
+  link=link.replace("href=\"\/\/","");
+  var urlfetch = UrlFetchApp.fetch(link);
+  var imgFile = urlfetch.getBlob();
+  
+  var resource = {title: imgFile.getName(), mimeType: imgFile.getContentType(),parents: []};
+  var option = {ocr: true, ocrLanguage:'ta'}
+  var gFile = Drive.Files.insert(resource, imgFile, option);
+  var filetext = DocumentApp.openById(gFile.id).getBody().getText();
+  Drive.Files.remove(gFile.id);
+    
+    filetext=filetext.replace(/\n/gi,"\n\n");
+    var result=writeit(pa, filetext,"எழுத்துணரியின் விளைவை ஏற்றுதல்","","");
+    Logger.log(result);
+}
+
+function gettoken(page,la, dom,user,pass)
+{var tokenquery = "http://" + la + dom + "/w/api.php?action=login&format=json&lgname=" + user +"&lgpassword=" + pass;
+  var options = {"method": "POST"};
+  try {
+    var login = UrlFetchApp.fetch(tokenquery,options); 
+    var data = Utilities.jsonParse(login.getContentText());
+    var tokenstr = String(data.login.token).split("\+")[0]+"%2B%5C"
+        
+if (login.getResponseCode() === 200) {
+var loginquery = "https://" + la + dom + "/w/api.php?action=login&format=json&lgname=" + user +"&lgpassword=" + pass + "&lgtoken=" +tokenstr + "&lgdomain="+ la +dom;
+var options2 = {"method": "POST", "headers": {"cookie":data.login.cookieprefix+"Session="  + data.login.sessionid +"; path=/; domain=" + dom + "; HttpOnly;" + data.login.cookieprefix + "UserName=" + user}};
+    var lconfirm = UrlFetchApp.fetch(loginquery ,options2);    
+    var ct = lconfirm.getAllHeaders()["Set-Cookie"].join(";");
+    if (lconfirm.getResponseCode() === 200) 
+    {
+     var data1 = Utilities.jsonParse(lconfirm.getContentText());
+if(data1.login.result=="Success"){
+var options3 = {"method": "GET", "headers": {"Content-Type":"application/x-www-form-urlencoded", "cookie":data1.login.cookieprefix + "Session=" + data1.login.sessionid + "; path=/; domain=" + dom + "; HttpOnly;" + data1.login.cookieprefix + "UserName=" + data1.login.lgusername + "; " + la + "wikiUserID=" + data1.login.lguserid + "; " + la + "wikiToken="+ data1.login.lgtoken}};
+var queryurl = "http://" + la + dom + "/w/api.php?action=query&format=json&meta=tokens%7Cuserinfo";
+var options3 = {"method": "GET", "headers": {"cookie":ct}};
+var qresult = UrlFetchApp.fetch(queryurl,options3);  
+var datai =Utilities.jsonParse(qresult.getContentText());
+ var ct2 = qresult.getAllHeaders()["Set-Cookie"].join(";");
+return ["1",datai.query.tokens.csrftoken, ct2];
+}
+else{ return  ["0", "Unable to get token",""];}
+}   
+    }
+  } catch (e) { return ["0", " Result:" + e.toString(),""];}
+}
+
+function writeit(page,text,sum) {
+  var la ="ta";//language
+  var dom =".wikisource.org";//domain name
+ var user ="";//username
+ var pass = "";//password
+ 
+var rtoken = gettoken(page, la, dom, user, pass);
+
+if (rtoken[0]=="1")
+{
+var pload = {
+"action":"edit",
+"format":"json",
+"title": page,
+"text":text,
+"token": rtoken[1],
+"summary":sum
+}
+var options = 
+{
+ "method" : "post",
+ "headers": {"cookie":rtoken[2]},
+ "payload" : pload
+}
+var editurl = "https://" + la + dom + "/w/api.php";
+var edit = UrlFetchApp.fetch(editurl,options);
+var fresult = Utilities.jsonParse(edit.getContentText());
+return fresult.edit.result;
+}
+else{return rtoken[1];}//return error message
+
+}
